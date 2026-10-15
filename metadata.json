@@ -1,0 +1,6 @@
+{
+  "name": "Sonora",
+  "description": "Music-first social and collaboration platform featuring Song DNA lineage and creative connections.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

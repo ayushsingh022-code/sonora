@@ -17,6 +17,7 @@ interface AppShellProps {
   allArtists?: Record<string, UserProfile>;
   primaryDemoKeys?: readonly string[];
   onSwitchUser?: (key: string) => void;
+  onOpenTutorial?: () => void;
   children: React.ReactNode;
 }
 
@@ -29,6 +30,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   allArtists,
   primaryDemoKeys,
   onSwitchUser,
+  onOpenTutorial,
   children,
 }) => {
   const isStage = currentTab === 'stage';
@@ -46,6 +48,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         allArtists={allArtists}
         primaryDemoKeys={primaryDemoKeys}
         onSwitchUser={onSwitchUser}
+        onOpenTutorial={onOpenTutorial}
       />
 
       {/* Main Content Viewport */}

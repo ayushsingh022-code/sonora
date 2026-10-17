@@ -48,8 +48,9 @@ import { ExploreScreen } from './components/features/explore/ExploreScreen';
 import { LinkScreen } from './components/features/link/LinkScreen';
 import { StageScreen } from './components/features/stage/StageScreen';
 import { CreatePostModal, CreatePostSubmitPayload } from './components/features/circle/CreatePostModal';
-import { AddPartSubmitPayload } from './components/features/circle/AddPartModal';
+import { AddPartSubmitPayload, PublishPartPayload } from './components/features/circle/AddPartModal';
 import { PublishCollaborationPayload } from './components/features/circle/CollaborationWorkspaceModal';
+import { OnboardingTutorialModal } from './components/common/OnboardingTutorialModal';
 import {
   isFollowing,
   areFriends,
@@ -83,6 +84,12 @@ export default function App() {
   // Artists registry (contains the 4 core demo musicians + collaborators)
   const [artists, setArtists] = useState<Record<string, UserProfile>>(ARTISTS);
 
+  // The active user object derived from currentPersonaKey
+  const currentUser = artists[currentPersonaKey] || artists.bryanthemensah;
+
+  // Active artist profile to display on Stage
+  const currentStageArtist = artists[stageArtistKey] || currentUser;
+
   // Social Relationships state (Sections 5, 6, 7)
   const [followList, setFollowList] = useState<FollowRelationship[]>(DEMO_FOLLOWS);
   const [friendships, setFriendships] = useState<Friendship[]>(DEMO_FRIENDSHIPS);
@@ -108,6 +115,11 @@ export default function App() {
     loadStorage('sonora_events_v5', DEMO_SCHEDULED_EVENTS)
   );
 
+  // Saved reels playlist state (Requirement 1 & 2)
+  const [savedPostIds, setSavedPostIds] = useState<string[]>(() =>
+    loadStorage('sonora_saved_reels_v1', ['post_demo_split_screen'])
+  );
+
   // Cross-screen navigation targets (Explore -> Circle Collaboration Workspace)
   const [circleInitialWorkspaceSong, setCircleInitialWorkspaceSong] = useState<Song | null>(null);
   const [circleInitialWorkspaceVersionId, setCircleInitialWorkspaceVersionId] = useState<string | null>(null);
@@ -116,6 +128,26 @@ export default function App() {
   // Quick Jam Modal state (accessible from Stage or Link)
   const [stageTargetJamUser, setStageTargetJamUser] = useState<UserProfile | null>(null);
   const [activeLiveJamEvent, setActiveLiveJamEvent] = useState<CollaborationEvent | null>(null);
+
+  // First-visit tutorial walkthrough state stored locally (5 short steps)
+  const [isTutorialOpen, setIsTutorialOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('sonora_tutorial_completed') !== 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleCloseTutorial = () => {
+    setIsTutorialOpen(false);
+    try {
+      localStorage.setItem('sonora_tutorial_completed', 'true');
+    } catch {}
+  };
+
+  const handleOpenTutorial = () => {
+    setIsTutorialOpen(true);
+  };
 
   // Sync state to localStorage
   useEffect(() => {
@@ -160,15 +192,28 @@ export default function App() {
     } catch (e) {}
   }, [conversations]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('sonora_saved_reels_v1', JSON.stringify(savedPostIds));
+    } catch (e) {}
+  }, [savedPostIds]);
+
+  // Initial load from backend for saved playlist
+  useEffect(() => {
+    const userId = currentUser?.id || 'user_current';
+    fetch(`/api/saved-playlist?userId=${userId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.savedPostIds && Array.isArray(data.savedPostIds)) {
+          setSavedPostIds((prev) => Array.from(new Set([...prev, ...data.savedPostIds])));
+        }
+      })
+      .catch(() => {});
+  }, [currentUser?.id]);
+
   // Global Create Modal state
   const [isGlobalCreateOpen, setIsGlobalCreateOpen] = useState(false);
   const [globalCreateType, setGlobalCreateType] = useState<PostType>('post');
-
-  // The active user object derived from currentPersonaKey
-  const currentUser = artists[currentPersonaKey] || artists.bryanthemensah;
-
-  // Active artist profile to display on Stage
-  const currentStageArtist = artists[stageArtistKey] || currentUser;
 
   // Unread chats count for notification badges
   const unreadChatsCount = conversations.reduce((acc, c) => acc + c.unreadCount, 0);
@@ -572,30 +617,88 @@ export default function App() {
     return { success: true };
   };
 
+  const handleToggleBookmark = async (
+    post: Post
+  ): Promise<{ success: boolean; isSaved: boolean; message: string }> => {
+    const currentlySaved = savedPostIds.includes(post.id);
+    const nextSaved = !currentlySaved;
+
+    // Optimistically update local saved list & posts
+    setSavedPostIds((prev) =>
+      nextSaved ? [post.id, ...prev.filter((id) => id !== post.id)] : prev.filter((id) => id !== post.id)
+    );
+    setPosts((prev) =>
+      prev.map((p) => (p.id === post.id ? { ...p, isBookmarkedByCurrentUser: nextSaved } : p))
+    );
+
+    // Persist to backend API endpoint
+    try {
+      const res = await fetch('/api/saved-playlist/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, postId: post.id }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        return {
+          success: true,
+          isSaved: data.isSaved,
+          message: data.isSaved ? 'Saved to your playlist 🎵' : 'Removed from saved playlist',
+        };
+      }
+    } catch (e) {
+      console.warn('Backend playlist toggle failed, saved locally:', e);
+    }
+
+    return {
+      success: true,
+      isSaved: nextSaved,
+      message: nextSaved ? 'Saved to your playlist 🎵' : 'Removed from saved playlist',
+    };
+  };
+
   const handleAddPartContribution = (
     payload: AddPartSubmitPayload
-  ): { newVersion: SongVersion; updatedSong: Song } => {
+  ): {
+    newVersion: SongVersion;
+    updatedSong: Song;
+    newContribution: Contribution;
+    rootContribution?: Contribution;
+  } => {
     let targetSong = songs.find((s) => s.id === payload.songId);
 
     // Fallback: If not directly found in state, look up by post's songId or initialize
     if (!targetSong) {
-      const relatedPost = posts.find((p) => p.songId === payload.songId || p.id === payload.songId);
+      const relatedPost = posts.find(
+        (p) => p.songId === payload.songId || p.id === payload.songId || `song_${p.id}` === payload.songId
+      );
       if (relatedPost) {
         targetSong = {
           id: payload.songId,
-          title: relatedPost.caption?.slice(0, 24).trim() || 'Collaborative Jam',
+          title:
+            relatedPost.caption?.split('\n')[0].replace(/#\S+/g, '').trim().slice(0, 28) ||
+            'Collaborative Jam',
           originalCreatorId: relatedPost.creatorId,
           originalPostId: relatedPost.id,
-          lineageIdentifier: `dna_${Date.now()}`,
+          lineageIdentifier: `dna_${relatedPost.id}`,
           totalLineageAdditions: 1,
-          rootCreatedAt: new Date().toISOString(),
+          rootCreatedAt: relatedPost.createdAt || new Date().toISOString(),
         };
         setSongs((prev) => [targetSong!, ...prev]);
       }
     }
 
     if (!targetSong) {
-      throw new Error(`Target song (${payload.songId}) was not found in the library.`);
+      targetSong = {
+        id: payload.songId,
+        title: payload.partLabel ? `${payload.partLabel} Jam` : 'Collaborative Jam',
+        originalCreatorId: currentUser.id,
+        originalPostId: '',
+        lineageIdentifier: `dna_${payload.songId}`,
+        totalLineageAdditions: 1,
+        rootCreatedAt: new Date().toISOString(),
+      };
+      setSongs((prev) => [targetSong!, ...prev]);
     }
 
     // Resolve parent version
@@ -610,25 +713,33 @@ export default function App() {
     }
 
     // If no version exists at all for this song, establish a root version first
+    let establishedRootContrib: Contribution | undefined;
     if (!targetVersion) {
-      const timestamp = new Date().toISOString();
+      const relatedPost = posts.find(
+        (p) => p.songId === targetSong!.id || p.id === targetSong!.id || `song_${p.id}` === targetSong!.id
+      );
+      const postMediaItem = relatedPost?.media?.[0];
+      const timestamp = relatedPost?.createdAt || new Date().toISOString();
       const rootVerId = `ver_${targetSong.id}_root`;
       const rootContribId = `contrib_${targetSong.id}_stem0`;
 
-      const rootContrib: Contribution = {
+      establishedRootContrib = {
         id: rootContribId,
         songId: targetSong.id,
         versionId: rootVerId,
         contributorId: targetSong.originalCreatorId,
-        partType: 'Vocals',
-        audioReference: {
+        partType: 'Original',
+        audioReference: postMediaItem || {
           type: 'audio',
           url: 'https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3',
         },
-        videoReference: {
-          type: 'video',
-          url: 'https://assets.mixkit.co/videos/preview/mixkit-drummer-playing-drums-in-a-concert-42513-large.mp4',
-        },
+        videoReference:
+          postMediaItem?.type === 'video'
+            ? postMediaItem
+            : {
+                type: 'video',
+                url: '/videos/demo-collab-splitscreen.mp4',
+              },
         orderIndex: 0,
         isOriginalStem: true,
         createdAt: timestamp,
@@ -646,7 +757,7 @@ export default function App() {
       };
 
       setSongVersions((prev) => [...prev, targetVersion!]);
-      setContributions((prev) => [...prev, rootContrib]);
+      setContributions((prev) => [...prev, establishedRootContrib!]);
     }
 
     const { updatedSong, newVersion, newContribution } = contributeToSongDna({
@@ -666,6 +777,13 @@ export default function App() {
     setSongVersions((prev) => [...prev, newVersion]);
     setContributions((prev) => [...prev, newContribution]);
 
+    return {
+      newVersion,
+      updatedSong,
+      newContribution,
+      rootContribution: establishedRootContrib,
+    };
+
     // Increment current user's collabsCount in stats
     setArtists((prev) => {
       const user = prev[currentPersonaKey];
@@ -682,7 +800,7 @@ export default function App() {
       };
     });
 
-    return { newVersion, updatedSong };
+    return { newVersion, updatedSong, newContribution };
   };
 
   const handlePublishCollaboration = (
@@ -769,6 +887,70 @@ export default function App() {
       return { success: true, post: savedPost };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to publish collaboration.';
+      return { success: false, error: msg };
+    }
+  };
+
+  const handlePublishCollaborationPart = (
+    payload: PublishPartPayload
+  ): { success: boolean; error?: string; post?: Post } => {
+    try {
+      const { newVersion, updatedSong, newContribution, rootContribution } = handleAddPartContribution({
+        songId: payload.songId,
+        parentVersionId: payload.parentVersionId,
+        partType: payload.partType,
+        videoMedia: payload.videoMedia,
+        partLabel: payload.partLabel,
+        note: payload.note,
+      });
+
+      // Collect media for all distinct contribution videos in this version
+      const allKnownContribs = [
+        ...contributions,
+        ...(rootContribution ? [rootContribution] : []),
+        newContribution,
+      ];
+      const activeContribs = (newVersion.orderedContributionIds || [])
+        .map((id) => allKnownContribs.find((c) => c.id === id))
+        .filter((c): c is Contribution => c !== undefined);
+
+      const postMedia: MediaReference[] = activeContribs
+        .map((c) => c.videoReference || (c.audioReference?.type === 'video' ? c.audioReference : undefined) || c.audioReference)
+        .filter((m): m is MediaReference => Boolean(m && m.url));
+
+      if (postMedia.length === 0) {
+        postMedia.push(payload.videoMedia);
+      }
+
+      const originalCreator = artists[updatedSong.originalCreatorId] || {
+        displayName: 'Original Creator',
+        username: 'creator',
+      };
+
+      const newPost: Post = {
+        id: `post_collab_${Date.now()}`,
+        creatorId: currentUser.id,
+        postType: 'collab',
+        caption:
+          payload.caption?.trim() ||
+          `Collaborative Take on "${updatedSong.title}" with @${originalCreator.username} 🎶\n#SongDNA #Collab #v${newVersion.versionNumber.toFixed(1)}`,
+        tags: ['collab', 'songdna', `${newVersion.orderedContributionIds.length}parts`, payload.partType.toLowerCase()],
+        media: postMedia,
+        createdAt: 'Just now',
+        likesCount: 1,
+        commentsCount: 0,
+        sharesCount: 0,
+        isLikedByCurrentUser: true,
+        songId: updatedSong.id,
+        versionId: newVersion.id,
+      };
+
+      // Place newly published collaboration post at the top of Circle feed
+      setPosts((prev) => [newPost, ...prev]);
+
+      return { success: true, post: newPost };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to publish collaboration part.';
       return { success: false, error: msg };
     }
   };
@@ -866,6 +1048,7 @@ export default function App() {
       allArtists={artists}
       primaryDemoKeys={PRIMARY_DEMO_KEYS}
       onSwitchUser={handleSwitchUser}
+      onOpenTutorial={handleOpenTutorial}
       onCreateClick={() => {
         setGlobalCreateType('post');
         setIsGlobalCreateOpen(true);
@@ -881,6 +1064,10 @@ export default function App() {
           songVersions={songVersions}
           contributions={contributions}
           comments={comments}
+          savedPostIds={savedPostIds}
+          onOpenTutorial={handleOpenTutorial}
+          onToggleBookmark={handleToggleBookmark}
+          onPublishCollaborationPart={handlePublishCollaborationPart}
           onAddPost={handleAddPost}
           onAddPartContribution={handleAddPartContribution}
           onPublishCollaboration={handlePublishCollaboration}
@@ -1035,6 +1222,12 @@ export default function App() {
         songVersions={songVersions}
         contributions={contributions}
         onSubmitPost={handleAddPost}
+      />
+
+      {/* First-Visit Walkthrough Tutorial */}
+      <OnboardingTutorialModal
+        isOpen={isTutorialOpen}
+        onClose={handleCloseTutorial}
       />
     </AppShell>
   );

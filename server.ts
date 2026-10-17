@@ -114,6 +114,7 @@ Generate high-quality, practical musical guidance for this take in strict JSON f
       const text = response.text || '';
       try {
         const parsed = JSON.parse(text) as AICopilotResponse;
+        parsed.isAiGenerated = true;
         return res.json(parsed);
       } catch (e) {
         return res.json({
@@ -122,6 +123,7 @@ Generate high-quality, practical musical guidance for this take in strict JSON f
           chordProgression: 'Am - F - C - G',
           scaleOrKey: keySignature,
           tags: ['sonora', String(genre).toLowerCase(), String(instrument).toLowerCase()],
+          isAiGenerated: true,
         });
       }
     } catch (err: any) {
@@ -205,6 +207,7 @@ Perform a deep musical analysis of this Song DNA and suggest the next three idea
       const text = response.text || '';
       try {
         const parsed = JSON.parse(text) as AISongDNAGuideResponse;
+        parsed.isAiGenerated = true;
         return res.json(parsed);
       } catch (e) {
         return res.json(generateDnaGuideFallback(payload));
@@ -307,6 +310,46 @@ Analyze musical synergy and return ranked matches for each candidate.`;
     }
   });
 
+  // In-memory + persistent set for saved reels by user
+  const savedPlaylistsByUser: Record<string, string[]> = {
+    user_current: ['post_demo_split_screen'],
+    user_bryanthemensah: ['post_rhea_1'],
+  };
+
+  // 4. Saved Playlist Endpoints
+  app.get('/api/saved-playlist', (req, res) => {
+    const userId = (req.query.userId as string) || 'user_current';
+    const saved = savedPlaylistsByUser[userId] || [];
+    return res.json({ success: true, userId, savedPostIds: saved });
+  });
+
+  app.post('/api/saved-playlist/toggle', (req, res) => {
+    const { userId = 'user_current', postId } = req.body;
+    if (!postId) {
+      return res.status(400).json({ success: false, error: 'postId is required' });
+    }
+    if (!savedPlaylistsByUser[userId]) {
+      savedPlaylistsByUser[userId] = [];
+    }
+    const list = savedPlaylistsByUser[userId];
+    const index = list.indexOf(postId);
+    let isSaved = false;
+    if (index >= 0) {
+      list.splice(index, 1);
+      isSaved = false;
+    } else {
+      list.unshift(postId);
+      isSaved = true;
+    }
+    return res.json({
+      success: true,
+      isSaved,
+      postId,
+      savedPostIds: list,
+      message: isSaved ? 'Saved to playlist' : 'Removed from playlist',
+    });
+  });
+
   // Health check
   app.get('/api/health', (req, res) => {
     res.json({
@@ -359,6 +402,7 @@ function generateCopilotFallback(payload: AICopilotRequest): AICopilotResponse {
     mixToneTip: `Use subtle analog tape saturation and a warm plate reverb with 1.8s decay.`,
     creativeIdea: `Try playing an octave higher during the chorus to create an uplifting counter-melody.`,
     fullSummary: `A rich ${genre} progression in ${key}. The track has strong rhythmic foundation and plenty of frequency space for a warm second layer!`,
+    isAiGenerated: false,
   };
 }
 
@@ -398,6 +442,7 @@ function generateDnaGuideFallback(payload: AISongDNAGuideRequest): AISongDNAGuid
         complexity: 'Intermediate',
       },
     ],
+    isAiGenerated: false,
   };
 }
 

@@ -83,7 +83,7 @@ export const SongDNAGuideSection: React.FC<SongDNAGuideSectionProps> = ({
                 AI Song DNA Guide
               </span>
               <span className="text-[9px] bg-white/10 px-2 py-0.5 rounded-full text-white/60">
-                Gemini 3.8 Flash
+                {guideData?.isAiGenerated === false ? 'Sonora Audio Engine' : 'Gemini 3.8 Flash'}
               </span>
             </div>
             <h4 className="text-sm font-black text-white">Lineage Evolution & Next Stems</h4>

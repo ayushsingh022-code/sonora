@@ -23,6 +23,7 @@ import {
   MAX_VISIBLE_CONTRIBUTIONS,
 } from '../../../types/models';
 import { Avatar } from '../../common/Avatar';
+import { getLocalFallbackVideo } from '../../../utils/mediaFallback';
 import { SongDnaWaveIcon, SparklesIcon } from '../../common/SonoraIcons';
 import { MusicCopilotModal } from '../ai/MusicCopilotModal';
 import { SongDNAGuideSection } from '../ai/SongDNAGuideSection';
@@ -81,6 +82,7 @@ export const CollaborationWorkspaceModal: React.FC<CollaborationWorkspaceModalPr
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishSuccess, setPublishSuccess] = useState<boolean>(false);
+  const [videoOverrides, setVideoOverrides] = useState<Record<string, string>>({});
 
   // Sync activeVersionId when initialVersionId changes, modal opens, or versions change
   useEffect(() => {
@@ -302,19 +304,21 @@ export const CollaborationWorkspaceModal: React.FC<CollaborationWorkspaceModalPr
               <span className="hidden sm:inline">AI Copilot</span>
             </button>
 
-            {/* Publish Collaboration Action (Phase 3B Fix) */}
-            <button
-              type="button"
-              onClick={handleOpenPublishModal}
-              className="px-3 sm:px-4 py-2 rounded-full text-xs font-black bg-[#D9F56A] hover:bg-[#C9E758] text-[#20201E] transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
-              title="Publish this collaboration take to Circle"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13"></line>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-              </svg>
-              <span>Publish Collaboration</span>
-            </button>
+            {/* Publish Collaboration Action (Hidden until user has added a valid contribution) */}
+            {activeContributions.some((c) => c.contributorId === currentUser.id) && (
+              <button
+                type="button"
+                onClick={handleOpenPublishModal}
+                className="px-3 sm:px-4 py-2 rounded-full text-xs font-black bg-[#D9F56A] hover:bg-[#C9E758] text-[#20201E] transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                title="Publish this collaboration take to Circle"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                <span>Publish Collab</span>
+              </button>
+            )}
 
             {/* Add Part Button */}
             <button
@@ -372,9 +376,11 @@ export const CollaborationWorkspaceModal: React.FC<CollaborationWorkspaceModalPr
                 };
 
                 const isMuted = !!mutedParts[contrib.id];
-                const videoUrl =
+                const rawVideoUrl =
                   contrib.videoReference?.url ||
                   (contrib.audioReference?.type === 'video' ? contrib.audioReference.url : null);
+                const fallbackUrl = getLocalFallbackVideo(contrib.partType, false);
+                const videoUrl = videoOverrides[contrib.id] || rawVideoUrl || (contrib.audioReference ? null : fallbackUrl);
 
                 // Special handling for 3-part layout: primary frame gets prominent col-span on mobile/desktop
                 const isThreePartPrimary = partCount === 3 && index === 0;
@@ -405,6 +411,11 @@ export const CollaborationWorkspaceModal: React.FC<CollaborationWorkspaceModalPr
                         muted={isMuted}
                         onTimeUpdate={index === 0 ? handleTimeUpdate : undefined}
                         onEnded={index === 0 ? handleEnded : undefined}
+                        onError={() => {
+                          if (videoUrl !== fallbackUrl) {
+                            setVideoOverrides((prev) => ({ ...prev, [contrib.id]: fallbackUrl }));
+                          }
+                        }}
                         className="w-full h-full object-cover"
                       />
                     ) : (

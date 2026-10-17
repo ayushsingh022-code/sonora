@@ -202,6 +202,14 @@ export const ARTISTS: Record<string, UserProfile> = {
   },
 };
 
+// Index ARTISTS by user ID as well so lookups by contributorId/creatorId always resolve
+Object.values(ARTISTS).forEach((artist) => {
+  if (artist && artist.id) {
+    ARTISTS[artist.id] = artist;
+  }
+});
+ARTISTS['user_current'] = CURRENT_USER;
+
 /**
  * 4 Core Demo Musicians for User Switching
  * 1. Singer/Songwriter: Bryan The Mensah
@@ -314,8 +322,8 @@ export const DEMO_CONTRIBUTIONS: Contribution[] = [
     versionId: 'ver_demo_splitscreen_v1',
     contributorId: 'user_bryanthemensah',
     partType: 'Vocals',
-    audioReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-drummer-playing-drums-in-a-concert-42513-large.mp4' },
-    videoReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-drummer-playing-drums-in-a-concert-42513-large.mp4' },
+    audioReference: { type: 'video', url: '/videos/demo-collab-splitscreen.mp4' },
+    videoReference: { type: 'video', url: '/videos/demo-collab-splitscreen.mp4' },
     orderIndex: 0,
     isOriginalStem: true,
     createdAt: '2026-10-12T12:00:00Z',
@@ -327,7 +335,7 @@ export const DEMO_CONTRIBUTIONS: Contribution[] = [
     contributorId: 'user_rhea',
     partType: 'Vocals',
     audioReference: { type: 'audio', url: 'https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3' },
-    videoReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-singer-singing-into-a-microphone-in-a-studio-42514-large.mp4' },
+    videoReference: { type: 'video', url: '/videos/vocals-take.mp4' },
     orderIndex: 0,
     isOriginalStem: true,
     createdAt: '2026-10-10T19:30:00Z',
@@ -339,7 +347,7 @@ export const DEMO_CONTRIBUTIONS: Contribution[] = [
     contributorId: 'user_rhea',
     partType: 'Guitar',
     audioReference: { type: 'audio', url: 'https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3' },
-    videoReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-guitarist-playing-a-guitar-42512-large.mp4' },
+    videoReference: { type: 'video', url: '/videos/guitar-take.mp4' },
     orderIndex: 1,
     isOriginalStem: true,
     createdAt: '2026-10-10T19:30:00Z',
@@ -351,7 +359,7 @@ export const DEMO_CONTRIBUTIONS: Contribution[] = [
     contributorId: 'user_arjun',
     partType: 'Guitar',
     audioReference: { type: 'audio', url: 'https://assets.mixkit.co/music/preview/mixkit-sleepy-cat-135.mp3' },
-    videoReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-guitarist-playing-a-guitar-42512-large.mp4' },
+    videoReference: { type: 'video', url: '/videos/guitar-take.mp4' },
     orderIndex: 2,
     isOriginalStem: false,
     createdAt: '2026-10-11T14:15:00Z',
@@ -363,7 +371,7 @@ export const DEMO_CONTRIBUTIONS: Contribution[] = [
     contributorId: 'user_dev',
     partType: 'Drums',
     audioReference: { type: 'audio', url: 'https://assets.mixkit.co/music/preview/mixkit-hollidays-690.mp3' },
-    videoReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-drummer-playing-drums-in-a-concert-42513-large.mp4' },
+    videoReference: { type: 'video', url: '/videos/drums-take.mp4' },
     orderIndex: 3,
     isOriginalStem: false,
     createdAt: '2026-10-12T20:00:00Z',
@@ -375,7 +383,7 @@ export const DEMO_CONTRIBUTIONS: Contribution[] = [
     contributorId: 'user_maya',
     partType: 'Keyboard',
     audioReference: { type: 'audio', url: 'https://assets.mixkit.co/music/preview/mixkit-game-level-music-689.mp3' },
-    videoReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-hands-playing-piano-keys-in-a-studio-42515-large.mp4' },
+    videoReference: { type: 'video', url: '/videos/keys-take.mp4' },
     orderIndex: 4,
     isOriginalStem: false,
     createdAt: '2026-10-12T20:00:00Z',
@@ -386,8 +394,8 @@ export const DEMO_CONTRIBUTIONS: Contribution[] = [
     versionId: 'version_somethin_v1',
     contributorId: 'user_bryanthemensah',
     partType: 'Vocals',
-    audioReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-singer-singing-into-a-microphone-in-a-studio-42514-large.mp4' },
-    videoReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-singer-singing-into-a-microphone-in-a-studio-42514-large.mp4' },
+    audioReference: { type: 'video', url: '/videos/vocals-take.mp4' },
+    videoReference: { type: 'video', url: '/videos/vocals-take.mp4' },
     orderIndex: 0,
     isOriginalStem: true,
     createdAt: '2026-10-01T12:00:00Z',
@@ -398,8 +406,8 @@ export const DEMO_CONTRIBUTIONS: Contribution[] = [
     versionId: 'version_somethin_v1',
     contributorId: 'user_marcus',
     partType: 'Bass',
-    audioReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-man-playing-a-synthesizer-in-a-recording-studio-42516-large.mp4' },
-    videoReference: { type: 'video', url: 'https://assets.mixkit.co/videos/preview/mixkit-man-playing-a-synthesizer-in-a-recording-studio-42516-large.mp4' },
+    audioReference: { type: 'video', url: '/videos/bass-take.mp4' },
+    videoReference: { type: 'video', url: '/videos/bass-take.mp4' },
     orderIndex: 1,
     isOriginalStem: false,
     createdAt: '2026-10-01T14:30:00Z',
@@ -419,7 +427,7 @@ export const DEMO_POSTS: Post[] = [
     media: [
       {
         type: 'video',
-        url: 'https://assets.mixkit.co/videos/preview/mixkit-drummer-playing-drums-in-a-concert-42513-large.mp4',
+        url: '/videos/demo-collab-splitscreen.mp4',
         thumbnailUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80',
         durationSeconds: 48,
       },
@@ -441,8 +449,8 @@ export const DEMO_POSTS: Post[] = [
     tags: ['original', 'guitar', 'indie', 'collab'],
     media: [
       {
-        type: 'image',
-        url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80',
+        type: 'video',
+        url: '/videos/guitar-take.mp4',
         thumbnailUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
         durationSeconds: 42,
       },
@@ -463,8 +471,8 @@ export const DEMO_POSTS: Post[] = [
     tags: ['vocals', 'afrofusion', 'openforcollab'],
     media: [
       {
-        type: 'image',
-        url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800&auto=format&fit=crop&q=80',
+        type: 'video',
+        url: '/videos/vocals-take.mp4',
         thumbnailUrl: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&auto=format&fit=crop&q=80',
         durationSeconds: 58,
       },
@@ -484,8 +492,8 @@ export const DEMO_POSTS: Post[] = [
     tags: ['funk', 'stratocaster', 'jam'],
     media: [
       {
-        type: 'image',
-        url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80',
+        type: 'video',
+        url: '/videos/guitar-take.mp4',
         thumbnailUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80',
         durationSeconds: 30,
       },
@@ -503,8 +511,8 @@ export const DEMO_POSTS: Post[] = [
     tags: ['bass', 'pocket', 'neosoul', 'groove'],
     media: [
       {
-        type: 'image',
-        url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80',
+        type: 'video',
+        url: '/videos/bass-take.mp4',
         thumbnailUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
         durationSeconds: 38,
       },

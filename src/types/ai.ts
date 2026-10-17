@@ -29,6 +29,7 @@ export interface AICopilotResponse {
   mixToneTip?: string;
   creativeIdea?: string;
   fullSummary: string;
+  isAiGenerated?: boolean;
 }
 
 export interface AISongDNAGuideRequest {
@@ -64,6 +65,7 @@ export interface AISongDNAGuideResponse {
     analysis: string;
   };
   recommendedContributions: RecommendedContributionProposal[];
+  isAiGenerated?: boolean;
 }
 
 export interface AIMatchmakerRequest {

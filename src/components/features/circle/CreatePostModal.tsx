@@ -2,14 +2,15 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * Sonora — CreatePostModal (Phase 3A: Simple Video Post Creation)
- * Focused, streamlined 4-step creation experience:
- * 1. Select a video (MP4, WebM)
- * 2. Preview and play it
- * 3. Add a caption
- * 4. Publish to Circle
- * 
- * Advanced music and Song DNA options are tucked behind progressive disclosure.
+ * Sonora — CreatePostModal
+ * Creator-focused simple creation experience:
+ * - "What's brewing?" free-form thought/caption composer
+ * - Compact AI Copilot prompt/idea generator
+ * - Video upload and preview
+ * - Visibly marked "Coming soon" AI music generation placeholder
+ * - Collapsible Advanced section with exactly 2 choices:
+ *     1. Link to a song (reveals song search)
+ *     2. Standalone (independent post without Song DNA lineage)
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -21,11 +22,10 @@ import {
   SongVersion,
   Contribution,
   MediaReference,
-  MAX_VISIBLE_CONTRIBUTIONS,
 } from '../../../types/models';
 import { PrimaryButton, SecondaryButton } from '../../common/Buttons';
 import { Avatar } from '../../common/Avatar';
-import { SparklesIcon } from '../../common/SonoraIcons';
+import { SparklesIcon, SearchIcon, SongDnaWaveIcon } from '../../common/SonoraIcons';
 import { MusicCopilotModal } from '../ai/MusicCopilotModal';
 
 export interface CreatePostSubmitPayload {
@@ -58,42 +58,6 @@ interface CreatePostModalProps {
   onSubmitPost: (payload: CreatePostSubmitPayload) => void;
 }
 
-// Curated royalty-free performance samples kept under optional settings
-const OPTIONAL_PRESETS = [
-  {
-    name: 'Acoustic Guitar Take',
-    instrument: 'Guitar' as MusicalInstrument,
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-guitarist-playing-a-guitar-42512-large.mp4',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80',
-    duration: 38,
-    fileSize: '4.2 MB',
-  },
-  {
-    name: 'Studio Vocals Take',
-    instrument: 'Vocals' as MusicalInstrument,
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-singer-singing-into-a-microphone-in-a-studio-42514-large.mp4',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800&auto=format&fit=crop&q=80',
-    duration: 45,
-    fileSize: '5.1 MB',
-  },
-  {
-    name: 'Rhodes Keys Take',
-    instrument: 'Keys' as MusicalInstrument,
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-hands-playing-piano-keys-in-a-studio-42515-large.mp4',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1520523839898-507127050302?w=800&auto=format&fit=crop&q=80',
-    duration: 32,
-    fileSize: '3.8 MB',
-  },
-  {
-    name: 'Drums & Beats Take',
-    instrument: 'Beats' as MusicalInstrument,
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-drummer-playing-drums-in-a-concert-42513-large.mp4',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1519892300165-cb5542fb47c7?w=800&auto=format&fit=crop&q=80',
-    duration: 29,
-    fileSize: '3.4 MB',
-  },
-];
-
 export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   isOpen,
   onClose,
@@ -104,28 +68,35 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   contributions = [],
   onSubmitPost,
 }) => {
-  // Simple default flow state
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+  // Composer state: free-form thoughts, musical ideas, or captions
+  const [caption, setCaption] = useState<string>('');
+
+  // Video state
+  const [, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoFileName, setVideoFileName] = useState<string>('');
   const [videoFileSize, setVideoFileSize] = useState<string>('');
-  const [caption, setCaption] = useState<string>('');
+  const [isPlayingPreview, setIsPlayingPreview] = useState<boolean>(false);
 
-  // UI state: loading, error, success
+  // Advanced section collapse state
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState<boolean>(!!initialSongId);
+
+  // Optional Post Settings: Exactly two choices ('standalone' | 'link_song')
+  const [postSettingChoice, setPostSettingChoice] = useState<'standalone' | 'link_song'>(
+    initialSongId ? 'link_song' : 'standalone'
+  );
+  const [selectedLinkedSongId, setSelectedLinkedSongId] = useState<string>(initialSongId || '');
+  const [songSearchQuery, setSongSearchQuery] = useState<string>('');
+  const [tagsInput, setTagsInput] = useState<string>('sonora, music');
+
+  // UI state
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isPlayingPreview, setIsPlayingPreview] = useState<boolean>(false);
   const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
-
-  // Progressive disclosure: collapsed by default
-  const [showOptionalSettings, setShowOptionalSettings] = useState<boolean>(!!initialSongId);
-  const [selectedInstrument, setSelectedInstrument] = useState<MusicalInstrument>('Guitar');
-  const [tagsInput, setTagsInput] = useState<string>('music, collab, video');
-  const [songTitle, setSongTitle] = useState<string>('');
-  const [selectedParentSongId, setSelectedParentSongId] = useState<string>(initialSongId || '');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoElementRef = useRef<HTMLVideoElement | null>(null);
+  const draftObjectUrlRef = useRef<string | null>(null);
 
   // Reset or initialize state
   useEffect(() => {
@@ -134,34 +105,50 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       setIsSubmitting(false);
       setIsPlayingPreview(false);
       if (initialSongId) {
-        setSelectedParentSongId(initialSongId);
-        setShowOptionalSettings(true);
+        setPostSettingChoice('link_song');
+        setSelectedLinkedSongId(initialSongId);
+        setIsAdvancedOpen(true);
+      } else {
+        setPostSettingChoice('standalone');
+        setSelectedLinkedSongId('');
+        setIsAdvancedOpen(false);
+      }
+    } else {
+      if (draftObjectUrlRef.current && draftObjectUrlRef.current.startsWith('blob:')) {
+        URL.revokeObjectURL(draftObjectUrlRef.current);
+        draftObjectUrlRef.current = null;
       }
     }
   }, [isOpen, initialSongId]);
 
   if (!isOpen) return null;
 
-  // Handle actual file selection
+  // Video file upload handler
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setErrorMessage(null);
 
-    // Validate video format
     if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|webm|mov|m4v)$/i)) {
-      setErrorMessage('Please select a valid video file (MP4, WebM, or MOV).');
+      setErrorMessage('Please select a valid video file (MP4, WebM, MOV).');
+      return;
+    }
+
+    if (file.size > 500 * 1024 * 1024) {
+      setErrorMessage('Video size exceeds 500MB limit.');
       return;
     }
 
     try {
+      if (draftObjectUrlRef.current && draftObjectUrlRef.current.startsWith('blob:')) {
+        URL.revokeObjectURL(draftObjectUrlRef.current);
+      }
       const objectUrl = URL.createObjectURL(file);
+      draftObjectUrlRef.current = objectUrl;
       setVideoFile(file);
       setVideoUrl(objectUrl);
       setVideoFileName(file.name);
-
-      // Format file size
       const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
       setVideoFileSize(`${sizeMB} MB`);
       setIsPlayingPreview(false);
@@ -170,18 +157,21 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     }
   };
 
-  // Quick preset loader (under progressive disclosure)
-  const handleSelectPreset = (preset: typeof OPTIONAL_PRESETS[0]) => {
+  const handleClearVideo = () => {
+    if (draftObjectUrlRef.current && draftObjectUrlRef.current.startsWith('blob:')) {
+      URL.revokeObjectURL(draftObjectUrlRef.current);
+      draftObjectUrlRef.current = null;
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     setVideoFile(null);
-    setVideoUrl(preset.videoUrl);
-    setVideoFileName(preset.name);
-    setVideoFileSize(preset.fileSize);
-    setSelectedInstrument(preset.instrument);
-    setErrorMessage(null);
+    setVideoUrl(null);
+    setVideoFileName('');
+    setVideoFileSize('');
     setIsPlayingPreview(false);
   };
 
-  // Toggle video playback in preview
   const handleTogglePlayPreview = () => {
     if (!videoElementRef.current) return;
     if (videoElementRef.current.paused) {
@@ -193,83 +183,117 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     }
   };
 
-  // Handle submission to Circle
+  // Filter songs by search query
+  const filteredSongs = availableSongs.filter((s) => {
+    if (!songSearchQuery.trim()) return true;
+    const q = songSearchQuery.toLowerCase().trim();
+    return s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q);
+  });
+
+  // Handle publishing post
   const handlePublish = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!videoUrl) {
-      setErrorMessage('Please select a video file before publishing to Circle.');
+    const trimmedCaption = caption.trim();
+    if (!trimmedCaption && !videoUrl) {
+      setErrorMessage("Please enter a thought or choose a video before posting.");
       return;
     }
 
-    if (isSubmitting) return; // Prevent duplicate clicks
+    // Validate user's intent if 'Link to a song' was selected
+    if (postSettingChoice === 'link_song' && !selectedLinkedSongId) {
+      setErrorMessage('Please select a song to link, or choose Standalone post.');
+      return;
+    }
+
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    // Prepare tags
     const tags = tagsInput
       .split(',')
       .map((t) => t.trim().replace(/^#/, ''))
       .filter(Boolean);
 
-    const mediaRef: MediaReference = {
-      type: 'video',
-      url: videoUrl,
-      thumbnailUrl: '',
-      durationSeconds: 30,
-    };
+    const mediaList: MediaReference[] = videoUrl
+      ? [
+          {
+            type: 'video',
+            url: videoUrl,
+            thumbnailUrl: '',
+            durationSeconds: 30,
+          },
+        ]
+      : [
+          {
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80',
+          },
+        ];
 
-    // Determine Song DNA linkage:
-    // If user explicitly chose a parent song under optional settings, branch it.
-    // Otherwise, seamlessly establish a root Song DNA for this original video post.
-    const isBranching = !!selectedParentSongId;
-    const parentSong = isBranching ? availableSongs.find((s) => s.id === selectedParentSongId) : null;
-    const parentVersions = parentSong ? songVersions.filter((v) => v.songId === parentSong.id) : [];
-    const latestParentVersion = parentVersions[parentVersions.length - 1];
+    // Clean handoff: if linked, branch that song. If standalone, absolutely no song DNA!
+    if (postSettingChoice === 'link_song' && selectedLinkedSongId) {
+      const parentSong = availableSongs.find((s) => s.id === selectedLinkedSongId);
+      const parentVersions = parentSong ? songVersions.filter((v) => v.songId === parentSong.id) : [];
+      const latestVer = parentVersions[parentVersions.length - 1];
 
-    const finalTitle = songTitle.trim() || caption.slice(0, 32).trim() || `${currentUser.displayName}'s Jam`;
-
-    // Simulate brief publishing handshake to show progress and prevent duplicate clicks
-    setTimeout(() => {
+      draftObjectUrlRef.current = null; // Disown so it persists in state
       onSubmitPost({
         post: {
-          postType: 'video',
-          caption: caption.trim() || `New music video by @${currentUser.username} 🎶`,
-          tags: tags.length ? tags : ['music', 'video', 'collab'],
-          media: [mediaRef],
+          postType: videoUrl ? 'video' : 'post',
+          caption: trimmedCaption || `Collaborating on "${parentSong?.title}" 🎶`,
+          tags: tags.length ? tags : ['collab', 'music'],
+          media: mediaList,
         },
-        songDnaMode: isBranching && parentSong && latestParentVersion ? 'contribute' : 'create_root',
-        rootSongData:
-          !isBranching || !parentSong
-            ? {
-                title: finalTitle,
-                partType: selectedInstrument,
-                versionLabel: 'Original Video Performance',
-              }
-            : undefined,
-        contributeSongData:
-          isBranching && parentSong && latestParentVersion
-            ? {
-                songId: parentSong.id,
-                parentVersionId: latestParentVersion.id,
-                partType: selectedInstrument,
-                versionLabel: `Added ${selectedInstrument} Video`,
-                changelog: `Contributed ${selectedInstrument} video part.`,
-              }
-            : undefined,
+        songDnaMode: 'contribute',
+        contributeSongData: {
+          songId: selectedLinkedSongId,
+          parentVersionId: latestVer?.id || `ver_root_${selectedLinkedSongId}`,
+          partType: (currentUser.instruments?.[0] as MusicalInstrument) || 'Guitar',
+          versionLabel: `${currentUser.displayName || currentUser.username} Take`,
+          changelog: trimmedCaption || 'Added collaboration take.',
+        },
       });
+    } else {
+      // Standalone: purely independent post with no songId and no inherited Song DNA
+      draftObjectUrlRef.current = null; // Disown so it persists in state
+      onSubmitPost({
+        post: {
+          postType: videoUrl ? 'video' : 'post',
+          caption: trimmedCaption || `New share by @${currentUser.username} 🎶`,
+          tags: tags.length ? tags : ['music', 'share'],
+          media: mediaList,
+        },
+        songDnaMode: 'none',
+      });
+    }
 
-      setIsSubmitting(false);
-      onClose();
-    }, 450);
+    setIsSubmitting(false);
+    onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-[#FAF7F2] text-[#20201E] w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 border border-[#EFE9DF] shadow-2xl max-h-[92vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isSubmitting) onClose();
+      }}
+    >
+      <div className="bg-[#FAF7F2] text-[#20201E] w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 border border-[#EFE9DF] shadow-2xl max-h-[92vh] overflow-y-auto flex flex-col">
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/mp4,video/webm,video/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-[#EFE9DF]">
-          <h2 className="text-lg font-black tracking-tight text-[#20201E]">Create Post</h2>
+        <div className="flex items-center justify-between pb-3 border-b border-[#EFE9DF] shrink-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-black tracking-tight text-[#20201E]">Create Post</h2>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -282,20 +306,20 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         </div>
 
         {/* Creator compact row */}
-        <div className="flex items-center justify-between py-3">
+        <div className="flex items-center justify-between py-3 shrink-0">
           <div className="flex items-center gap-2.5">
             <Avatar src={currentUser.avatarUrl} alt={currentUser.displayName} size="sm" />
             <div>
               <p className="text-xs font-bold leading-tight text-[#20201E]">{currentUser.displayName}</p>
-              <p className="text-[11px] text-[#8E8E93]">@{currentUser.username}</p>
+              <p className="text-[11px] text-[#B9B2A9]">@{currentUser.username}</p>
             </div>
           </div>
-          <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#D9F56A] text-[#20201E]">
-            Circle
+          <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#D9F56A] text-[#20201E]">
+            Circle Feed
           </span>
         </div>
 
-        <form onSubmit={handlePublish} className="space-y-4">
+        <form onSubmit={handlePublish} className="space-y-4 flex-1">
           {/* Error Banner */}
           {errorMessage && (
             <div className="p-3 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
@@ -305,181 +329,251 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           )}
 
           {/* ------------------------------------------------------------- */}
-          {/* 1. VIDEO UPLOAD & PREVIEW AREA                                */}
-          {/* ------------------------------------------------------------- */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/mp4,video/webm,video/*"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-
-          {!videoUrl ? (
-            /* Upload Dropzone (When no video is selected) */
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-[#D5CEC2] hover:border-[#FF5A36] bg-white rounded-3xl p-6 text-center cursor-pointer transition-all hover:bg-[#FFFDFC] group shadow-2xs"
-            >
-              <div className="w-14 h-14 rounded-full bg-[#FFF2EE] group-hover:scale-105 transition-transform flex items-center justify-center mx-auto mb-3 text-[#FF5A36]">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-              </div>
-              <h3 className="text-sm font-bold text-[#20201E]">Choose a video file to upload</h3>
-              <p className="text-xs text-[#8E8E93] mt-1">MP4 or WebM video format</p>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fileInputRef.current?.click();
-                }}
-                className="mt-4 px-4 py-1.5 rounded-full bg-[#FF5A36] hover:bg-[#F04D29] text-white text-xs font-bold transition-all shadow-xs"
-              >
-                Browse Video
-              </button>
-            </div>
-          ) : (
-            /* Video Preview Player (When video is selected) */
-            <div className="bg-white rounded-3xl p-3 border border-[#EFE9DF] space-y-2.5 shadow-2xs">
-              <div className="relative aspect-16/9 rounded-2xl overflow-hidden bg-black flex items-center justify-center">
-                <video
-                  ref={videoElementRef}
-                  src={videoUrl}
-                  playsInline
-                  loop
-                  controls
-                  className="w-full h-full object-cover"
-                  onPlay={() => setIsPlayingPreview(true)}
-                  onPause={() => setIsPlayingPreview(false)}
-                />
-
-                {/* Center play toggle if paused */}
-                {!isPlayingPreview && (
-                  <button
-                    type="button"
-                    onClick={handleTogglePlayPreview}
-                    className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-black/60 text-white flex items-center justify-center hover:scale-110 transition-transform cursor-pointer pointer-events-auto"
-                    aria-label="Play preview"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5">
-                      <path d="M8 5V19L19 12L8 5Z" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-
-              {/* Video metadata row with change button */}
-              <div className="flex items-center justify-between px-1 text-xs">
-                <div className="min-w-0 pr-2">
-                  <p className="font-bold text-[#20201E] truncate">{videoFileName || 'Selected video'}</p>
-                  <p className="text-[11px] text-[#8E8E93]">{videoFileSize || 'Ready to post'}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-1 text-xs font-bold text-[#FF5A36] hover:bg-[#FFF2EE] rounded-full transition-colors cursor-pointer shrink-0"
-                >
-                  Change video
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ------------------------------------------------------------- */}
-          {/* 2. CAPTION INPUT                                              */}
+          {/* 1. "WHAT'S BREWING?" COMPOSER WITH AI COPILOT                 */}
           {/* ------------------------------------------------------------- */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-[#20201E] block">
-                Caption
+              <label className="text-xs font-black uppercase tracking-wider text-[#20201E] block">
+                What's brewing?
               </label>
               <button
                 type="button"
                 onClick={() => setIsCopilotOpen(true)}
-                className="text-[11px] font-bold text-[#FF5A36] hover:text-[#FF2D8B] flex items-center gap-1.5 cursor-pointer bg-[#FFF2EE] hover:bg-[#FFE5DC] px-2.5 py-1 rounded-full transition-colors border border-[#FF5A36]/20"
-                title="Get AI ideas for captions, chords, and tags"
+                className="text-[10px] font-bold text-[#FF5A36] hover:text-[#FF2D8B] flex items-center gap-1 cursor-pointer bg-[#FFF2EE] px-2.5 py-1 rounded-full border border-[#FF5A36]/25 transition-colors"
+                title="Spark post ideas, lyrics, and chords with AI Copilot"
               >
                 <SparklesIcon size={12} color="#FF5A36" />
-                <span>AI Copilot: Spark Ideas</span>
+                <span>Copilot Ideas</span>
               </button>
             </div>
             <textarea
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              placeholder="What's brewing on your mind? Share your riff, chord progression, or collab idea..."
+              placeholder="Share what's on your mind — a late-night riff, chord progression, vocal idea, or creative prompt..."
               rows={3}
-              className="w-full bg-white border border-[#EFE9DF] rounded-2xl p-3 text-sm text-[#20201E] focus:outline-none focus:ring-2 focus:ring-[#FF5A36] resize-none shadow-2xs"
+              className="w-full bg-white border border-[#EFE9DF] rounded-2xl p-3 text-xs sm:text-sm text-[#20201E] placeholder:text-[#B9B2A9] focus:outline-none focus:ring-2 focus:ring-[#FF5A36] resize-none shadow-2xs leading-relaxed"
             />
           </div>
 
           {/* ------------------------------------------------------------- */}
-          {/* 3. PROGRESSIVE DISCLOSURE: OPTIONAL SETTINGS (COLLAPSED)      */}
+          {/* 2. VIDEO UPLOAD & PREVIEW                                     */}
+          {/* ------------------------------------------------------------- */}
+          <div>
+            <label className="text-xs font-black uppercase tracking-wider text-[#20201E] block mb-2">
+              Performance Video
+            </label>
+
+            {!videoUrl ? (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-[#D5CEC2] hover:border-[#FF5A36] bg-white rounded-2xl p-5 text-center cursor-pointer transition-all hover:bg-[#FFFDFC] group shadow-2xs flex flex-col items-center justify-center gap-2"
+              >
+                <div className="w-10 h-10 rounded-xl bg-[#FFF2EE] text-[#FF5A36] group-hover:scale-105 transition-transform flex items-center justify-center">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-[#20201E]">Select video from device</p>
+                  <p className="text-[10px] text-[#B9B2A9] mt-0.5">MP4 or WebM video format</p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl p-2.5 border border-[#EFE9DF] space-y-2 shadow-2xs">
+                <div className="relative aspect-16/9 rounded-xl overflow-hidden bg-black flex items-center justify-center">
+                  <video
+                    ref={videoElementRef}
+                    src={videoUrl}
+                    playsInline
+                    loop
+                    className="w-full h-full object-cover cursor-pointer"
+                    onClick={handleTogglePlayPreview}
+                    onPlay={() => setIsPlayingPreview(true)}
+                    onPause={() => setIsPlayingPreview(false)}
+                  />
+
+                  {/* Top bar with file name & discard ✕ */}
+                  <div className="absolute top-2 left-2 right-2 flex items-center justify-between z-10 pointer-events-auto">
+                    <span className="text-[10px] bg-black/60 backdrop-blur-md text-white font-bold px-2 py-0.5 rounded-full truncate max-w-[200px]">
+                      {videoFileName} {videoFileSize && `(${videoFileSize})`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearVideo}
+                      className="w-6 h-6 rounded-full bg-black/70 hover:bg-[#FF5A36] text-white flex items-center justify-center text-xs font-bold cursor-pointer"
+                      title="Remove video"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {!isPlayingPreview && (
+                    <button
+                      type="button"
+                      onClick={handleTogglePlayPreview}
+                      className="absolute inset-0 m-auto w-11 h-11 rounded-full bg-black/60 text-white flex items-center justify-center hover:scale-105 transition-transform cursor-pointer"
+                      aria-label="Play preview"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5">
+                        <path d="M8 5V19L19 12L8 5Z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between px-1 text-xs">
+                  <span className="text-[11px] text-[#8E8E93] truncate">{videoFileName || 'Selected video'}</span>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-xs font-bold text-[#FF5A36] hover:underline cursor-pointer"
+                  >
+                    Change file
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ------------------------------------------------------------- */}
+          {/* 3. FUTURE MUSIC GENERATION PLACEHOLDER (COMING SOON)          */}
+          {/* ------------------------------------------------------------- */}
+          <div className="p-3 bg-[#FAF7F2] rounded-2xl border border-[#E5DFD5] flex items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                <SparklesIcon size={16} color="#9333ea" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-[#20201E] truncate">AI Music Generation</span>
+                  <span className="text-[9px] font-black bg-purple-100 text-purple-700 px-1.5 py-0.2 rounded-full uppercase shrink-0">
+                    Coming Soon
+                  </span>
+                </div>
+                <p className="text-[10px] text-[#78716C] truncate">
+                  Generate accompaniment tracks & audio stems directly in Sonora.
+                </p>
+              </div>
+            </div>
+            <span className="text-xs text-neutral-400 font-bold px-2 py-1 rounded-lg bg-neutral-100 shrink-0 cursor-not-allowed">
+              Preview
+            </span>
+          </div>
+
+          {/* ------------------------------------------------------------- */}
+          {/* 4. COLLAPSIBLE ADVANCED SECTION                               */}
           {/* ------------------------------------------------------------- */}
           <div className="pt-1">
             <button
               type="button"
-              onClick={() => setShowOptionalSettings(!showOptionalSettings)}
-              className="flex items-center gap-1.5 text-xs font-bold text-[#8E8E93] hover:text-[#20201E] transition-colors cursor-pointer"
+              onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+              className="flex items-center gap-1.5 text-xs font-bold text-[#78716C] hover:text-[#20201E] transition-colors cursor-pointer"
             >
-              <span>{showOptionalSettings ? '▾' : '▸'}</span>
-              <span>Optional settings</span>
-              {selectedParentSongId && (
-                <span className="text-[10px] bg-[#D9F56A] text-[#20201E] px-2 py-0.2 rounded-full">
-                  Linked to Song DNA
+              <span>{isAdvancedOpen ? '▾' : '▸'}</span>
+              <span>Advanced Settings</span>
+              {postSettingChoice === 'link_song' && selectedLinkedSongId && (
+                <span className="text-[10px] bg-[#D9F56A] text-[#20201E] font-bold px-2 py-0.2 rounded-full">
+                  Linked to Song
                 </span>
               )}
             </button>
 
-            {showOptionalSettings && (
-              <div className="mt-3 p-3.5 bg-white rounded-2xl border border-[#EFE9DF] space-y-3 animate-in fade-in duration-150">
-                {/* Instrument Stem */}
+            {isAdvancedOpen && (
+              <div className="mt-2.5 p-3.5 bg-white rounded-2xl border border-[#EFE9DF] space-y-3 animate-in fade-in duration-150">
+                {/* Exactly Two Clear Choices */}
                 <div>
-                  <label className="text-[11px] font-bold text-[#20201E] block mb-1">
-                    Lead Instrument
+                  <label className="text-[11px] font-black uppercase tracking-wider text-[#20201E] block mb-2">
+                    Post Relationship
                   </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {['Vocals', 'Guitar', 'Bass', 'Beats', 'Keys'].map((inst) => (
-                      <button
-                        key={inst}
-                        type="button"
-                        onClick={() => setSelectedInstrument(inst as MusicalInstrument)}
-                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                          selectedInstrument === inst
-                            ? 'bg-[#D9F56A] text-[#20201E]'
-                            : 'bg-[#FAF7F2] text-[#20201E]/70 hover:bg-[#EFE9DF]'
-                        }`}
-                      >
-                        {inst}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Choice 1: Standalone */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPostSettingChoice('standalone');
+                        setSelectedLinkedSongId('');
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        postSettingChoice === 'standalone'
+                          ? 'bg-[#20201E] text-white border-[#20201E] shadow-xs'
+                          : 'bg-[#FAF7F2] border-[#EFE9DF] text-[#78716C] hover:text-[#20201E]'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">1. Standalone</div>
+                      <div className={`text-[10px] mt-0.5 ${postSettingChoice === 'standalone' ? 'text-white/70' : 'text-[#B9B2A9]'}`}>
+                        Independent post; no Song DNA lineage
+                      </div>
+                    </button>
+
+                    {/* Choice 2: Link to a song */}
+                    <button
+                      type="button"
+                      onClick={() => setPostSettingChoice('link_song')}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        postSettingChoice === 'link_song'
+                          ? 'bg-[#FF5A36] text-white border-[#FF5A36] shadow-xs'
+                          : 'bg-[#FAF7F2] border-[#EFE9DF] text-[#78716C] hover:text-[#20201E]'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">2. Link to a song</div>
+                      <div className={`text-[10px] mt-0.5 ${postSettingChoice === 'link_song' ? 'text-white/80' : 'text-[#B9B2A9]'}`}>
+                        Connect with an existing song DNA
+                      </div>
+                    </button>
                   </div>
                 </div>
 
-                {/* Optional Song DNA Branching */}
-                {availableSongs.length > 0 && (
-                  <div>
-                    <label className="text-[11px] font-bold text-[#20201E] block mb-1">
-                      Link to Existing Song DNA (Optional)
+                {/* Song Search: strictly revealed ONLY when Link to a song is selected */}
+                {postSettingChoice === 'link_song' && (
+                  <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#EFE9DF] space-y-2 animate-in fade-in duration-150">
+                    <label className="text-[11px] font-bold text-[#20201E] flex items-center justify-between">
+                      <span>Search & Select Existing Song</span>
+                      <span className="text-[10px] text-[#B9B2A9]">Required for linked posts</span>
                     </label>
+
+                    {/* Search query input */}
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none">
+                        <SearchIcon size={14} />
+                      </div>
+                      <input
+                        type="text"
+                        value={songSearchQuery}
+                        onChange={(e) => setSongSearchQuery(e.target.value)}
+                        placeholder="Search song title..."
+                        className="w-full bg-white border border-[#EFE9DF] rounded-xl pl-8 pr-3 py-1.5 text-xs text-[#20201E] focus:outline-none focus:ring-1 focus:ring-[#FF5A36]"
+                      />
+                    </div>
+
+                    {/* Song Select Dropdown */}
                     <select
-                      value={selectedParentSongId}
-                      onChange={(e) => setSelectedParentSongId(e.target.value)}
-                      className="w-full bg-[#FAF7F2] border border-[#EFE9DF] rounded-xl px-2.5 py-1.5 text-xs font-bold text-[#20201E] focus:outline-none focus:ring-1 focus:ring-[#FF5A36]"
+                      value={selectedLinkedSongId}
+                      onChange={(e) => setSelectedLinkedSongId(e.target.value)}
+                      className="w-full bg-white border border-[#EFE9DF] rounded-xl px-3 py-2 text-xs font-bold text-[#20201E] focus:outline-none focus:ring-1 focus:ring-[#FF5A36] cursor-pointer"
                     >
-                      <option value="">Create independent root Song DNA (Default)</option>
-                      {availableSongs.map((s) => (
+                      <option value="">-- Choose a song to link --</option>
+                      {filteredSongs.map((s) => (
                         <option key={s.id} value={s.id}>
-                          Branch "{s.title}" ({s.totalLineageAdditions} stems)
+                          🎵 {s.title} ({s.totalLineageAdditions} additions)
                         </option>
                       ))}
                     </select>
+
+                    {selectedLinkedSongId && (
+                      <div className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                        <span>✓</span>
+                        <span>
+                          Will connect as a new collaborative contribution on "
+                          {availableSongs.find((s) => s.id === selectedLinkedSongId)?.title}"
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Tags */}
+                {/* Optional Tags */}
                 <div>
                   <label className="text-[11px] font-bold text-[#20201E] block mb-1">
                     Tags (comma separated)
@@ -488,57 +582,28 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                     type="text"
                     value={tagsInput}
                     onChange={(e) => setTagsInput(e.target.value)}
-                    className="w-full bg-[#FAF7F2] border border-[#EFE9DF] rounded-xl px-2.5 py-1.5 text-xs text-[#20201E] focus:outline-none focus:ring-1 focus:ring-[#FF5A36]"
+                    placeholder="e.g. guitar, indie, acoustic"
+                    className="w-full bg-[#FAF7F2] border border-[#EFE9DF] rounded-xl px-3 py-1.5 text-xs text-[#20201E] focus:outline-none focus:ring-1 focus:ring-[#FF5A36]"
                   />
-                </div>
-
-                {/* Performance take samples helper */}
-                <div className="pt-1 border-t border-[#EFE9DF]">
-                  <span className="text-[10px] font-bold text-[#8E8E93] block mb-1">
-                    Need sample video footage?
-                  </span>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {OPTIONAL_PRESETS.map((p) => (
-                      <button
-                        key={p.name}
-                        type="button"
-                        onClick={() => handleSelectPreset(p)}
-                        className={`text-left p-1.5 rounded-lg border text-[10px] font-bold truncate transition-all cursor-pointer ${
-                          videoUrl === p.videoUrl
-                            ? 'bg-[#FF5A36]/10 border-[#FF5A36] text-[#FF5A36]'
-                            : 'bg-[#FAF7F2] border-[#EFE9DF] text-[#20201E]/70 hover:bg-[#EFE9DF]'
-                        }`}
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
             )}
           </div>
 
           {/* ------------------------------------------------------------- */}
-          {/* 4. ACTIONS: PUBLISH TO CIRCLE & CANCEL                        */}
+          {/* 5. PUBLISH AND CANCEL ACTIONS                                 */}
           {/* ------------------------------------------------------------- */}
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#EFE9DF]">
-            <SecondaryButton
-              size="sm"
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-            >
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#EFE9DF] shrink-0">
+            <SecondaryButton size="sm" type="button" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </SecondaryButton>
             <PrimaryButton
               size="sm"
               type="submit"
-              disabled={isSubmitting || !videoUrl}
-              className={`px-5 font-bold transition-all ${
-                !videoUrl || isSubmitting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-              }`}
+              disabled={isSubmitting || (!caption.trim() && !videoUrl)}
+              className="px-5 font-bold cursor-pointer"
             >
-              {isSubmitting ? 'Publishing to Circle...' : 'Publish to Circle'}
+              {isSubmitting ? 'Publishing...' : 'Publish to Circle'}
             </PrimaryButton>
           </div>
         </form>
@@ -549,13 +614,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         <MusicCopilotModal
           isOpen={isCopilotOpen}
           onClose={() => setIsCopilotOpen(false)}
-          initialInstrument={selectedInstrument}
+          initialInstrument={(currentUser.instruments?.[0] as MusicalInstrument) || 'Guitar'}
           contextTitle="AI Copilot · Spark Post Ideas"
           onApplySuggestions={(res) => {
             if (res.caption) setCaption(res.caption);
             if (res.tags && res.tags.length > 0) setTagsInput(res.tags.join(', '));
-            if (res.instrument) setSelectedInstrument(res.instrument);
-            if (res.title) setSongTitle(res.title);
             setIsCopilotOpen(false);
           }}
         />

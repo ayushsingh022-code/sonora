@@ -106,6 +106,7 @@ function getLocalCopilotFallback(request: AICopilotRequest): AICopilotResponse {
     mixToneTip: `Roll off low rumble below 80Hz and add a slight air boost at 12kHz.`,
     creativeIdea: `Layer an octave vocal hook or a warm nylon string melody in the second half.`,
     fullSummary: `Solid ${genre} take. Great pocket and clear harmonic direction for subsequent collaborative additions.`,
+    isAiGenerated: false,
   };
 }
 
@@ -145,6 +146,7 @@ function getLocalDnaGuideFallback(request: AISongDNAGuideRequest): AISongDNAGuid
         complexity: 'Intermediate',
       },
     ],
+    isAiGenerated: false,
   };
 }
 

@@ -20,6 +20,7 @@ interface DesktopHeaderProps {
   allArtists?: Record<string, UserProfile>;
   primaryDemoKeys?: readonly string[];
   onSwitchUser?: (key: string) => void;
+  onOpenTutorial?: () => void;
 }
 
 export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
@@ -30,6 +31,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
   allArtists,
   primaryDemoKeys,
   onSwitchUser,
+  onOpenTutorial,
 }) => {
   const navItems: Array<{ id: AppDestination; label: string }> = [
     { id: 'circle', label: 'Circle' },
@@ -79,6 +81,18 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
             primaryKeys={primaryDemoKeys}
             onSelectUser={onSwitchUser}
           />
+        )}
+
+        {onOpenTutorial && (
+          <button
+            type="button"
+            onClick={onOpenTutorial}
+            className="px-3 py-1.5 rounded-full bg-[#FFEBE5] text-[#FF5A36] hover:bg-[#FFDFD6] text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95"
+            title="Replay Sonora Interactive Tour"
+          >
+            <span>💡</span>
+            <span>Tour</span>
+          </button>
         )}
 
         <button

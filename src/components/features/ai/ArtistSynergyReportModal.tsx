@@ -79,9 +79,14 @@ export const ArtistSynergyReportModal: React.FC<ArtistSynergyReportModalProps> =
               </div>
             </div>
             <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-[#D9F56A]">
-                AI Synergy Report
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#D9F56A]">
+                  AI Synergy Report
+                </span>
+                <span className="text-[9px] bg-white/10 px-2 py-0.2 rounded-full text-white/70">
+                  {matchResult?.isAiGenerated !== false ? 'Gemini 3.8 Flash' : 'Sonora Affinity Engine'}
+                </span>
+              </div>
               <h3 className="text-base font-black text-white">Collaboration Compatibility</h3>
             </div>
           </div>

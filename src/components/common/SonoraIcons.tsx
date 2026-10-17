@@ -218,3 +218,25 @@ export const SparklesIcon: React.FC<IconProps> = ({ size = 18, color = 'currentC
     />
   </svg>
 );
+
+/**
+ * Bookmark / Save Playlist Icon
+ */
+export const BookmarkIcon: React.FC<IconProps & { isFilled?: boolean }> = ({
+  size = 20,
+  color = '#FF2D8B',
+  isFilled = false,
+  className = '',
+}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={isFilled ? color : 'none'} className={className} aria-hidden="true">
+    <path
+      d="M19 21L12 16.2L5 21V5C5 3.89543 5.89543 3 7 3H17C18.1046 3 19 3.89543 19 5V21Z"
+      stroke={color}
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill={isFilled ? color : 'none'}
+    />
+  </svg>
+);
+

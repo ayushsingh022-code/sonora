@@ -1,15 +1,22 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ * 
+ * Sonora — SongDNALineageModal
+ * Minimal Summary & Accurate History:
+ * - Compact view shows only Creators and Additions.
+ * - Removed separate AI Copilot and AI Guide buttons.
+ * - Timeline is hidden by default until explicitly requested.
+ * - Avoids excessive version numbers, technical labels, and verbose lineage text.
+ * - Accurate counts of actual persisted Contribution records.
+ * - Distinguishes inherited contributions from newly added contributions.
  */
 
-import React, { useState } from 'react';
-import { Song, SongVersion, Contribution, UserProfile, Post, MAX_VISIBLE_CONTRIBUTIONS } from '../../../types/models';
-import { SongDnaWaveIcon, SparklesIcon } from '../../common/SonoraIcons';
-import { SecondaryButton } from '../../common/Buttons';
+import React, { useState, useMemo } from 'react';
+import { Song, SongVersion, Contribution, UserProfile, Post } from '../../../types/models';
+import { SongDnaWaveIcon } from '../../common/SonoraIcons';
 import { Avatar } from '../../common/Avatar';
-import { SongDNAGuideSection } from '../ai/SongDNAGuideSection';
-import { RecommendedContributionProposal } from '../../../types/ai';
+import { SecondaryButton, PrimaryButton } from '../../common/Buttons';
 
 interface SongDNALineageModalProps {
   isOpen: boolean;
@@ -22,7 +29,7 @@ interface SongDNALineageModalProps {
   initialVersionId?: string;
   onOpenWorkspace?: (song: Song, version?: SongVersion) => void;
   onNavigateToPost?: (postId: string) => void;
-  onCollabClick?: (song: Song, version?: SongVersion, proposal?: RecommendedContributionProposal) => void;
+  onCollabClick?: (song: Song, version?: SongVersion) => void;
 }
 
 export const SongDNALineageModal: React.FC<SongDNALineageModalProps> = ({
@@ -32,420 +39,286 @@ export const SongDNALineageModal: React.FC<SongDNALineageModalProps> = ({
   versions,
   contributions,
   artists,
-  posts,
   initialVersionId,
   onOpenWorkspace,
-  onNavigateToPost,
   onCollabClick,
 }) => {
-  if (!isOpen) return null;
-
-  // View mode tab
-  const [activeTab, setActiveTab] = useState<'ai_guide' | 'timeline'>('ai_guide');
+  // Hide expanded timeline until explicitly requested
+  const [showTimeline, setShowTimeline] = useState<boolean>(false);
 
   // Sort versions by versionNumber ascending
-  const sortedVersions = [...versions].sort((a, b) => a.versionNumber - b.versionNumber);
+  const sortedVersions = useMemo(
+    () => [...versions].sort((a, b) => a.versionNumber - b.versionNumber),
+    [versions]
+  );
   const rootVersion = sortedVersions[0];
   const latestVersion = sortedVersions[sortedVersions.length - 1];
 
-  const [selectedVersionId, setSelectedVersionId] = useState<string>(
-    initialVersionId || latestVersion?.id || rootVersion?.id || ''
+  // Actual saved Contribution records for this song (from data source)
+  const songContributions = useMemo(
+    () => contributions.filter((c) => c.songId === song.id),
+    [contributions, song.id]
   );
+
+  // Total additions: actual count of distinct non-stem contribution records or recorded additions
+  const totalActualAdditions = useMemo(() => {
+    // If song has actual saved contributions, count them accurately
+    if (songContributions.length > 0) {
+      return songContributions.length;
+    }
+    return song.totalLineageAdditions || 1;
+  }, [songContributions.length, song.totalLineageAdditions]);
+
+  // Distinct creators who contributed to this song
+  const participatingCreators = useMemo(() => {
+    const list: UserProfile[] = [];
+    const seenIds = new Set<string>();
+
+    // Original creator first
+    const rootArtist = artists[song.originalCreatorId];
+    if (rootArtist) {
+      seenIds.add(rootArtist.id);
+      list.push(rootArtist);
+    }
+
+    // Collaborators
+    songContributions.forEach((c) => {
+      if (c.contributorId && !seenIds.has(c.contributorId)) {
+        seenIds.add(c.contributorId);
+        const art = artists[c.contributorId];
+        if (art) list.push(art);
+      }
+    });
+
+    return list;
+  }, [song.originalCreatorId, songContributions, artists]);
+
+  if (!isOpen) return null;
 
   const originalArtist = artists[song.originalCreatorId] || {
     displayName: 'Original Creator',
     username: 'creator',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+    avatarUrl: '',
   };
-
-  // Find root post
-  const rootPost = posts?.find(
-    (p) => p.id === song.originalPostId || (p.songId === song.id && p.versionId === rootVersion?.id)
-  );
-
-  const selectedVersion =
-    versions.find((v) => v.id === selectedVersionId) || latestVersion || rootVersion;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-[#1C1C1E] text-white w-full max-w-xl rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto border border-white/10 shadow-2xl flex flex-col">
+      <div className="bg-[#1C1C1E] text-white w-full max-w-lg rounded-3xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto border border-white/10 shadow-2xl flex flex-col space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-white/10 shrink-0">
+        <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#FF5A36] to-[#FF2D8B] flex items-center justify-center shadow-md">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#FF5A36] to-[#FF2D8B] flex items-center justify-center shadow-xs">
               <SongDnaWaveIcon size={20} color="#FFFFFF" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#D9F56A]">
-                  Song DNA Lineage
-                </span>
-                <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/70">
-                  {song.totalLineageAdditions} total additions
-                </span>
-                <span className="text-[10px] bg-[#FF5A36]/20 text-[#FF5A36] px-2 py-0.5 rounded-full font-bold">
-                  {versions.length} {versions.length === 1 ? 'version' : 'versions'}
-                </span>
-              </div>
-              <h2 className="text-xl font-black tracking-tight">{song.title}</h2>
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#D9F56A]">
+                Song DNA
+              </span>
+              <h2 className="text-lg font-black tracking-tight">{song.title}</h2>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition-colors cursor-pointer text-sm"
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition-colors cursor-pointer text-sm font-bold"
             aria-label="Close"
           >
             ✕
           </button>
         </div>
 
-        {/* Root Creator & Original Post Banner */}
-        <div className="bg-gradient-to-r from-white/8 via-white/5 to-transparent rounded-2xl p-4 my-3 border border-white/10 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Avatar
-              src={originalArtist.avatarUrl}
-              alt={originalArtist.displayName}
-              size="md"
-            />
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] bg-[#FF5A36] text-white font-extrabold px-1.5 py-0.2 rounded-xs uppercase">
-                  Root Creator
-                </span>
-                <span className="text-xs text-white/50">{song.rootCreatedAt || 'Original Post'}</span>
+        {/* =========================================================== */}
+        {/* COMPACT VIEW: Only Creators and Additions                     */}
+        {/* =========================================================== */}
+        <div className="p-4 bg-white/5 rounded-2xl border border-white/10 space-y-3.5">
+          {/* 1. Creators */}
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-white/50 block mb-2">
+              Creators ({participatingCreators.length})
+            </span>
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Original Creator Spotlight */}
+              <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-xl border border-white/10">
+                <Avatar src={originalArtist.avatarUrl} alt={originalArtist.displayName} size="xs" />
+                <div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-white">{originalArtist.displayName}</span>
+                    <span className="text-[9px] bg-[#FF5A36] text-white font-extrabold px-1 rounded-xs uppercase">
+                      Origin
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-white/50">@{originalArtist.username}</span>
+                </div>
               </div>
-              <h4 className="text-sm font-bold text-white mt-0.5">{originalArtist.displayName}</h4>
-              <p className="text-[11px] text-[#D9F56A]">@{originalArtist.username} · Started this song lineage</p>
+
+              {/* Additional Contributors (without excessive names or text) */}
+              {participatingCreators.filter((c) => c.id !== song.originalCreatorId).map((c) => (
+                <div key={c.id} className="flex items-center gap-1.5 bg-black/20 px-2.5 py-1.5 rounded-xl border border-white/5">
+                  <Avatar src={c.avatarUrl} alt={c.displayName} size="xs" />
+                  <span className="text-xs text-white/90 font-medium">{c.displayName}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          {rootPost && onNavigateToPost && (
+          {/* 2. Additions Metric */}
+          <div className="flex items-center justify-between pt-2 border-t border-white/10">
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/50 block">
+                Additions
+              </span>
+              <p className="text-base font-black text-[#D9F56A]">
+                {totalActualAdditions} {totalActualAdditions === 1 ? 'addition' : 'additions'}
+              </p>
+            </div>
+
             <button
               type="button"
-              onClick={() => {
-                onClose();
-                onNavigateToPost(rootPost.id);
-              }}
-              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white transition-all cursor-pointer border border-white/10 shrink-0 text-right"
-              title="Locate root post in feed"
+              onClick={() => setShowTimeline(!showTimeline)}
+              className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white transition-all cursor-pointer border border-white/10"
             >
-              <span>View Root Post ↗</span>
+              {showTimeline ? 'Hide Timeline' : 'View Timeline →'}
             </button>
-          )}
-        </div>
-
-        {/* Main View Tab Selector */}
-        <div className="flex items-center gap-2 p-1 bg-white/5 rounded-2xl my-2 border border-white/5 shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveTab('ai_guide')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'ai_guide'
-                ? 'bg-gradient-to-r from-[#FF5A36] to-[#FF2D8B] text-white shadow-sm'
-                : 'text-white/70 hover:text-white'
-            }`}
-          >
-            <SparklesIcon size={14} color={activeTab === 'ai_guide' ? '#FFFFFF' : '#FF5A36'} />
-            <span>AI Lineage Guide & Radar</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('timeline')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'timeline'
-                ? 'bg-[#2C2C2E] text-white border border-white/10 shadow-sm'
-                : 'text-white/70 hover:text-white'
-            }`}
-          >
-            <SongDnaWaveIcon size={14} color={activeTab === 'timeline' ? '#D9F56A' : '#8E8E93'} />
-            <span>Version Timeline ({sortedVersions.length})</span>
-          </button>
-        </div>
-
-        {/* View Mode: AI Guide & Next Stems */}
-        {activeTab === 'ai_guide' && (
-          <div className="flex-1 overflow-y-auto">
-            <SongDNAGuideSection
-              song={song}
-              versions={sortedVersions}
-              contributions={contributions}
-              artists={artists}
-              onSelectContributionProposal={(proposal) => {
-                onClose();
-                if (onCollabClick) {
-                  onCollabClick(song, latestVersion, proposal);
-                }
-              }}
-            />
           </div>
-        )}
+        </div>
 
-        {/* View Mode: Versions Timeline */}
-        {activeTab === 'timeline' && (
-          <div className="flex-1 overflow-y-auto">
-            {/* Navigation Quick Filter / Version Selector Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-2 mb-2 border-b border-white/5 shrink-0">
-              <span className="text-[11px] font-bold text-white/50 uppercase tracking-wider mr-1">
-                Versions:
+        {/* =========================================================== */}
+        {/* EXPANDED TIMELINE: Hidden until explicitly requested        */}
+        {/* =========================================================== */}
+        {showTimeline && (
+          <div className="space-y-3 pt-1 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/60">
+                Timeline History ({sortedVersions.length} {sortedVersions.length === 1 ? 'version' : 'versions'})
               </span>
-              {sortedVersions.map((v, i) => {
-                const isSel = v.id === selectedVersion?.id;
-                const isLatest = i === sortedVersions.length - 1;
-                const isRoot = i === 0;
+              <span className="text-[10px] text-white/40">Root → Current</span>
+            </div>
+
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              {sortedVersions.map((ver, idx) => {
+                const isRoot = idx === 0;
+                const isLatest = idx === sortedVersions.length - 1;
+
+                // Parent version to separate newly added from inherited contributions
+                const parentVer = ver.parentVersionId
+                  ? versions.find((v) => v.id === ver.parentVersionId)
+                  : null;
+
+                const versionContribs = (ver.orderedContributionIds || [])
+                  .map((id) => contributions.find((c) => c.id === id))
+                  .filter((c): c is Contribution => c !== undefined);
+
+                const newlyAdded = parentVer
+                  ? versionContribs.filter((c) => !parentVer.orderedContributionIds.includes(c.id))
+                  : versionContribs;
+
+                const inherited = parentVer
+                  ? versionContribs.filter((c) => parentVer.orderedContributionIds.includes(c.id))
+                  : [];
 
                 return (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => setSelectedVersionId(v.id)}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                      isSel
-                        ? 'bg-[#FF5A36] text-white shadow-xs'
-                        : 'bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'
+                  <div
+                    key={ver.id}
+                    className={`p-3 rounded-2xl border transition-all ${
+                      isLatest
+                        ? 'bg-gradient-to-r from-white/10 to-white/5 border-[#FF5A36]/50'
+                        : 'bg-white/5 border-white/5'
                     }`}
                   >
-                    <span>v{v.versionNumber.toFixed(1)}</span>
-                    {isRoot && <span className="text-[9px] opacity-75">(Root)</span>}
-                    {isLatest && <span className="text-[9px] text-[#D9F56A] font-black">★</span>}
-                  </button>
+                    {/* Version row */}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                            isLatest ? 'bg-[#FF5A36] text-white' : 'bg-white/15 text-white/80'
+                          }`}
+                        >
+                          v{ver.versionNumber.toFixed(1)}
+                        </span>
+                        <span className="text-xs font-bold text-white">
+                          {ver.versionLabel || (isRoot ? 'Root Idea' : 'Collaboration Mix')}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-white/40">
+                        {isRoot ? '🌱 Root' : isLatest ? '★ Current' : ''}
+                      </span>
+                    </div>
+
+                    {/* Newly added contributions in this version */}
+                    {newlyAdded.length > 0 && (
+                      <div className="space-y-1 mt-1.5">
+                        {newlyAdded.map((c) => {
+                          const art = artists[c.contributorId];
+                          return (
+                            <div
+                              key={c.id}
+                              className="flex items-center justify-between text-xs bg-black/40 px-2.5 py-1 rounded-lg border border-[#D9F56A]/20"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <Avatar src={art?.avatarUrl} alt={art?.displayName} size="xs" />
+                                <span className="font-semibold text-white/90">{art?.displayName || 'Artist'}</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-[#D9F56A]">
+                                + {c.partType}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Inherited contributions (compact summary) */}
+                    {inherited.length > 0 && (
+                      <div className="mt-1.5 text-[10px] text-white/40 flex items-center gap-1.5 px-1">
+                        <span>↳ Inherited:</span>
+                        <span>
+                          {inherited.map((c) => c.partType).join(', ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
-
-            {/* Lineage Versions Timeline */}
-            <div className="space-y-4 my-2">
-          {sortedVersions.map((ver, idx) => {
-            const isRoot = idx === 0;
-            const isLatest = idx === sortedVersions.length - 1;
-            const isSelected = ver.id === selectedVersion?.id;
-
-            // Find parent version to calculate inherited vs newly added stems
-            const parentVer = ver.parentVersionId
-              ? versions.find((v) => v.id === ver.parentVersionId)
-              : null;
-
-            const allVersionContribs = contributions.filter((c) =>
-              ver.orderedContributionIds.includes(c.id)
-            );
-
-            // Separate newly added in this version from inherited
-            const newlyAddedContribs = parentVer
-              ? allVersionContribs.filter((c) => !parentVer.orderedContributionIds.includes(c.id))
-              : allVersionContribs;
-
-            const inheritedContribs = parentVer
-              ? allVersionContribs.filter((c) => parentVer.orderedContributionIds.includes(c.id))
-              : [];
-
-            return (
-              <div
-                key={ver.id}
-                id={`lineage-version-${ver.id}`}
-                className={`p-4 rounded-2xl border transition-all ${
-                  isSelected
-                    ? 'bg-gradient-to-b from-white/15 to-white/5 border-[#FF5A36] ring-1 ring-[#FF5A36]/40'
-                    : isLatest
-                    ? 'bg-white/8 border-[#FF5A36]/30'
-                    : 'bg-white/5 border-white/5'
-                }`}
-              >
-                {/* Version Title and Badges */}
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full ${
-                        isLatest
-                          ? 'bg-[#FF5A36] text-white'
-                          : isRoot
-                          ? 'bg-white/20 text-white'
-                          : 'bg-white/10 text-white/70'
-                      }`}
-                    >
-                      v{ver.versionNumber.toFixed(1)}
-                    </span>
-                    <span className="text-xs font-bold text-white">
-                      {ver.versionLabel || (isRoot ? 'Original Stems' : 'Collaboration Mix')}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    {isRoot && (
-                      <span className="text-[10px] text-white/60 bg-white/10 px-2 py-0.5 rounded-full font-bold">
-                        🌱 Root Version
-                      </span>
-                    )}
-                    {isLatest && (
-                      <span className="text-[10px] text-[#20201E] bg-[#D9F56A] px-2 py-0.5 rounded-full font-black uppercase">
-                        Current Mix
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {ver.changelogDescription && (
-                  <p className="text-xs text-white/70 mb-3 bg-black/20 p-2 rounded-xl">
-                    {ver.changelogDescription}
-                  </p>
-                )}
-
-                {/* Stems Section */}
-                <div className="space-y-2 pt-2 border-t border-white/10">
-                  {/* Newly Added Stems */}
-                  {newlyAddedContribs.length > 0 && (
-                    <div>
-                      <div className="text-[10px] font-bold text-[#D9F56A] uppercase tracking-wider mb-1 flex items-center gap-1">
-                        <span>✨ Added in v{ver.versionNumber.toFixed(1)}</span>
-                        <span>({newlyAddedContribs.length})</span>
-                      </div>
-                      <div className="space-y-1.5">
-                        {newlyAddedContribs.map((contrib) => {
-                          const contributor = artists[contrib.contributorId] || {
-                            displayName: 'Musician',
-                            username: 'artist',
-                            avatarUrl: '',
-                          };
-                          return (
-                            <div
-                              key={contrib.id}
-                              className="flex items-center justify-between bg-black/40 border border-[#D9F56A]/20 rounded-xl px-3 py-1.5 text-xs"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Avatar
-                                  src={contributor?.avatarUrl}
-                                  alt={contributor?.displayName}
-                                  size="xs"
-                                />
-                                <span className="font-semibold text-white">
-                                  {contributor?.displayName}
-                                </span>
-                                <span className="text-[10px] text-white/50">
-                                  @{contributor?.username}
-                                </span>
-                                {contrib.isOriginalStem && (
-                                  <span className="text-[9px] bg-[#FF5A36]/30 text-[#FF5A36] px-1.5 py-0.2 rounded font-bold">
-                                    Original
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-xs font-black text-[#D9F56A] bg-[#D9F56A]/10 px-2 py-0.5 rounded">
-                                + {contrib.partType}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Inherited Stems from previous version */}
-                  {inheritedContribs.length > 0 && (
-                    <div className="mt-2">
-                      <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1">
-                        Inherited from previous lineage ({inheritedContribs.length})
-                      </div>
-                      <div className="space-y-1">
-                        {inheritedContribs.map((contrib) => {
-                          const contributor = artists[contrib.contributorId] || {
-                            displayName: 'Musician',
-                            username: 'artist',
-                            avatarUrl: '',
-                          };
-                          return (
-                            <div
-                              key={contrib.id}
-                              className="flex items-center justify-between bg-black/20 rounded-xl px-3 py-1 text-xs opacity-70"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Avatar
-                                  src={contributor?.avatarUrl}
-                                  alt={contributor?.displayName}
-                                  size="xs"
-                                />
-                                <span className="text-white/80">{contributor?.displayName}</span>
-                              </div>
-                              <span className="text-[11px] text-white/60 font-medium">
-                                {contrib.partType}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions per Version */}
-                <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-white/5">
-                  {onOpenWorkspace && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onOpenWorkspace(song, ver);
-                      }}
-                      className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer flex items-center gap-1"
-                    >
-                      <span>Play this version</span>
-                      <span className="text-[10px]">▶</span>
-                    </button>
-                  )}
-                  {onCollabClick && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onCollabClick(song, ver);
-                      }}
-                      className="px-3 py-1.5 rounded-full text-xs font-black bg-[#FF5A36] text-white hover:bg-[#F04D29] transition-all cursor-pointer shadow-xs"
-                    >
-                      Branch / Add Part
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    )}
+          </div>
+        )}
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between pt-4 border-t border-white/10 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              if (latestVersion && onOpenWorkspace) {
-                onClose();
-                onOpenWorkspace(song, latestVersion);
-              }
-            }}
-            className="text-xs font-bold text-[#D9F56A] hover:underline cursor-pointer"
-          >
-            Jump to Latest Mix (v{latestVersion?.versionNumber.toFixed(1) || '1.0'}) ↗
-          </button>
+        <div className="flex items-center justify-between pt-3 border-t border-white/10 shrink-0">
+          <SecondaryButton size="sm" onClick={onClose}>
+            Close
+          </SecondaryButton>
 
           <div className="flex items-center gap-2">
-            <SecondaryButton
-              size="sm"
-              onClick={onClose}
-              className="bg-white/10 text-white border-transparent hover:bg-white/20"
-            >
-              Close
-            </SecondaryButton>
-            <button
-              onClick={() => {
-                onClose();
-                if (onCollabClick) onCollabClick(song, latestVersion);
-              }}
-              className="px-5 py-2 rounded-full text-xs font-black bg-[#FF5A36] text-white hover:bg-[#F04D29] transition-all cursor-pointer shadow-sm"
-            >
-              Add Part to Song
-            </button>
+            {onOpenWorkspace && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenWorkspace(song, latestVersion);
+                }}
+                className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              >
+                Open Mix
+              </button>
+            )}
+
+            {onCollabClick && (
+              <PrimaryButton
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onCollabClick(song, latestVersion);
+                }}
+                className="px-4 font-black"
+              >
+                + Add Part
+              </PrimaryButton>
+            )}
           </div>
         </div>
       </div>

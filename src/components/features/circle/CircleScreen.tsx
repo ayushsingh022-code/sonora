@@ -12,7 +12,7 @@ import { StoryCircleList } from './StoryCircleList';
 import { FeedPostCard } from './FeedPostCard';
 import { SongDNALineageModal } from './SongDNALineageModal';
 import { CreatePostModal, CreatePostSubmitPayload } from './CreatePostModal';
-import { AddPartModal, AddPartSubmitPayload } from './AddPartModal';
+import { AddPartModal, PublishPartPayload, AddPartSubmitPayload } from './AddPartModal';
 import {
   CollaborationWorkspaceModal,
   PublishCollaborationPayload,
@@ -28,18 +28,24 @@ interface CircleScreenProps {
   songVersions: SongVersion[];
   contributions: Contribution[];
   comments?: Comment[];
+  savedPostIds?: string[];
   onAddPost: (payload: CreatePostSubmitPayload) => void;
-  onAddPartContribution: (payload: AddPartSubmitPayload) => { newVersion: SongVersion; updatedSong: Song };
+  onAddPartContribution: (payload: any) => { newVersion: SongVersion; updatedSong: Song };
   onPublishCollaboration?: (
     payload: PublishCollaborationPayload
   ) => { success: boolean; error?: string; post?: Post };
+  onPublishCollaborationPart?: (
+    payload: PublishPartPayload
+  ) => Promise<{ success: boolean; error?: string; post?: Post }> | { success: boolean; error?: string; post?: Post };
   onNavigateToStage: (artistId?: string) => void;
   onToggleLike?: (postId: string) => void;
+  onToggleBookmark?: (post: Post) => Promise<{ success: boolean; isSaved: boolean; message: string }> | void;
   onAddComment?: (postId: string, text: string) => { success: boolean; error?: string };
   initialWorkspaceSong?: Song | null;
   initialWorkspaceVersionId?: string | null;
   initialAddPartSong?: { song: Song; version?: SongVersion } | null;
   onClearInitialWorkspace?: () => void;
+  onOpenTutorial?: () => void;
 }
 
 export const CircleScreen: React.FC<CircleScreenProps> = ({
@@ -50,16 +56,20 @@ export const CircleScreen: React.FC<CircleScreenProps> = ({
   songVersions,
   contributions,
   comments = [],
+  savedPostIds = [],
   onAddPost,
   onAddPartContribution,
   onPublishCollaboration,
+  onPublishCollaborationPart,
   onNavigateToStage,
   onToggleLike,
+  onToggleBookmark,
   onAddComment,
   initialWorkspaceSong,
   initialWorkspaceVersionId,
   initialAddPartSong,
   onClearInitialWorkspace,
+  onOpenTutorial,
 }) => {
   const [selectedSongDNA, setSelectedSongDNA] = useState<Song | null>(null);
   const [activeWorkspaceSong, setActiveWorkspaceSong] = useState<Song | null>(null);
@@ -67,6 +77,7 @@ export const CircleScreen: React.FC<CircleScreenProps> = ({
   const [addPartTarget, setAddPartTarget] = useState<{
     song: Song;
     parentVersion: SongVersion;
+    initialContribution?: Contribution;
   } | null>(null);
 
   // Sync initial workspace or add part targets from navigation (e.g. from Explore)
@@ -123,7 +134,11 @@ export const CircleScreen: React.FC<CircleScreenProps> = ({
   };
 
   // Open the Add Part contribution flow
-  const handleOpenAddPart = (song: Song, version?: SongVersion) => {
+  const handleOpenAddPart = (
+    song: Song,
+    version?: SongVersion,
+    initialContribution?: Contribution
+  ) => {
     const songVers = songVersions.filter((v) => v.songId === song.id);
     const targetVersion =
       version ||
@@ -133,7 +148,7 @@ export const CircleScreen: React.FC<CircleScreenProps> = ({
         parentVersionId: null,
         versionNumber: 1.0,
         versionLabel: 'Original Root',
-        orderedContributionIds: [],
+        orderedContributionIds: initialContribution ? [initialContribution.id] : [],
         createdAt: new Date().toISOString(),
         createdByUserId: song.originalCreatorId,
       };
@@ -141,6 +156,7 @@ export const CircleScreen: React.FC<CircleScreenProps> = ({
     setAddPartTarget({
       song,
       parentVersion: targetVersion,
+      initialContribution,
     });
   };
 
@@ -261,6 +277,18 @@ export const CircleScreen: React.FC<CircleScreenProps> = ({
         title="Circle"
         rightActions={
           <>
+            {onOpenTutorial && (
+              <button
+                type="button"
+                onClick={onOpenTutorial}
+                className="px-2.5 py-1 rounded-full bg-[#FFEBE5] text-[#FF5A36] hover:bg-[#FFDFD6] text-xs font-black transition-all cursor-pointer flex items-center gap-1 shadow-2xs active:scale-95"
+                aria-label="Guide and Demo Videos"
+                title="Sonora Guide & Demo Videos"
+              >
+                <span>💡</span>
+                <span className="hidden sm:inline">Guide</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -387,13 +415,17 @@ export const CircleScreen: React.FC<CircleScreenProps> = ({
                   versions={versions}
                   contributions={contributions}
                   allArtists={artists}
+                  isSaved={savedPostIds?.includes(post.id)}
+                  isPlaybackPaused={!!addPartTarget}
                   onInspectDNA={handleInspectDNA}
                   onOpenWorkspace={handleOpenWorkspace}
-                  onAddPart={(s, v) => handleOpenAddPart(s, v)}
+                  onAddPart={(s, v, c) => handleOpenAddPart(s, v, c)}
                   onContribute={(s, v) => handleOpenAddPart(s, v)}
                   onOpenComments={(p) => setActiveCommentPost(p)}
                   onShare={handleSharePost}
                   onToggleLike={onToggleLike}
+                  onToggleBookmark={onToggleBookmark}
+                  onNavigateToStage={onNavigateToStage}
                 />
               </div>
             );
@@ -447,10 +479,17 @@ export const CircleScreen: React.FC<CircleScreenProps> = ({
           currentUser={currentUser}
           song={addPartTarget.song}
           parentVersion={addPartTarget.parentVersion}
-          activeContributions={contributions.filter((c) =>
-            addPartTarget.parentVersion.orderedContributionIds.includes(c.id)
-          )}
+          activeContributions={(() => {
+            const ids = addPartTarget.parentVersion.orderedContributionIds || [];
+            const matched = contributions.filter((c) => ids.includes(c.id));
+            if (matched.length > 0) return matched;
+            if (addPartTarget.initialContribution) {
+              return [addPartTarget.initialContribution];
+            }
+            return [];
+          })()}
           artists={artists}
+          onPublishCollaborationPart={onPublishCollaborationPart}
           onConfirmContribution={handleConfirmAddPart}
         />
       )}

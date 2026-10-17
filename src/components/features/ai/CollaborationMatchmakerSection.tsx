@@ -158,7 +158,9 @@ export const CollaborationMatchmakerSection: React.FC<CollaborationMatchmakerSec
                 AI Matchmaker
               </span>
               <span className="text-[9px] bg-white/10 px-2 py-0.5 rounded-full text-white/60">
-                Gemini 3.8 Flash
+                {displayedMatches.some((m) => m.match.isAiGenerated !== false)
+                  ? 'Gemini 3.8 Flash'
+                  : 'Sonora Compatibility Engine'}
               </span>
             </div>
             <h3 className="text-base font-black tracking-tight text-white">
